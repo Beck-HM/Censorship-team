@@ -1,0 +1,22 @@
+{
+  "name": "censorship-team",
+  "version": "1.0.0",
+  "description": "Censorship Team — structured opencode skills package for code analysis, refactoring, and project workflows",
+  "license": "MIT",
+  "bin": {
+    "censorship-team": "./bin/install.js"
+  },
+  "files": [
+    "agents/",
+    "skills/",
+    "tools/",
+    "scripts/",
+    "bin/",
+    "i18n/",
+    ".gitignore",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
