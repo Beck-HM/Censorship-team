@@ -3,7 +3,7 @@ const fs = require("fs");
 const path = require("path");
 
 const packageDir = path.resolve(__dirname, "..");
-const dirsToCopy = ["agents", "skills", "tools", "scripts"];
+const dirsToCopy = ["agents", "skills", "tools", "scripts", "commands"];
 
 function findConfigDir() {
   const home = process.env.HOME || process.env.USERPROFILE;

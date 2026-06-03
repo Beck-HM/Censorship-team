@@ -11,6 +11,7 @@
     "skills/",
     "tools/",
     "scripts/",
+    "commands/",
     "bin/",
     "i18n/",
     ".gitignore",

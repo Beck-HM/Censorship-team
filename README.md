@@ -26,9 +26,12 @@ A structured opencode skills package for code analysis, refactoring, and project
 - [How It Works](#how-it-works)
 - [Agents](#agents)
 - [Pipeline](#pipeline)
+- [Quick Mode](#quick-mode)
 - [General-Purpose Skills](#general-purpose-skills)
 - [Custom Tools](#custom-tools)
 - [Full Analysis Mode](#full-analysis-mode)
+- [Project Deconstruction](#project-deconstruction)
+- [Pipeline State & Resume](#pipeline-state--resume)
 - [Usage Scenarios](#usage-scenarios)
 - [Design Principles](#design-principles)
 - [Translations](#translations)
@@ -136,7 +139,7 @@ User message
 │ Level 1: Casual / chit-chat            │ → short reply, do nothing
 │ Level 2: Simple code op (rename, etc.) │ → do it directly
 │ Level 3: Specific skill need           │ → ask: "load <skill>?"
-│ Level 4: Analysis / refactor           │ → full analysis mode OR Phase 0-5
+│ Level 4: Analysis / refactor           │ → full analysis, Quick Mode, or Phase 0-5
 │ Level 5: Cannot determine              │ → ask: "what do you need?"
 └────────────────────────────────────────┘
 ```
@@ -156,7 +159,7 @@ The only agent that talks to the user directly. Routes every message through a 5
 
 - **File**: `agents/code-architect.md`
 - **Mode**: primary
-- **Access**: read, glob, grep, edit, bash, task, question; skills: pipeline-orchestration, code-review, debugging, brainstorming, writing-plans, progress-tracker
+- **Access**: read, glob, grep, edit, bash, task, question; skills: pipeline-orchestration, code-review, debugging, brainstorming, writing-plans, progress-tracker, project-deconstruction
 
 ---
 
@@ -252,6 +255,54 @@ Sets up the package's model configuration. Guides the user through assigning mod
 
 ---
 
+### project-deconstruction
+
+Offered as an optional supplement after the standard pipeline or Full Analysis Mode. Produces a narrative "how this project runs" appendix plus an ASCII box diagram.
+
+**When**: After Phase 4 (plan stage) or FA4 (analysis report). Triggered by a user-facing question.
+
+**Process**:
+1. Read Phase 0 answers to understand the project type
+2. Review existing scout, arch, and test reports
+3. Read key source files (entry points, wiring, core logic)
+4. Write 3-6 narrative paragraphs covering startup, data flow, dependencies, critical paths
+5. Generate one ASCII box diagram using Unicode box-drawing characters
+
+**Output example**:
+```
+HTTP POST /api/orders
+    │
+    ▼
+┌──────────┐
+│  Auth    │
+│  Guard   │
+└────┬─────┘
+     │
+     ▼
+┌──────────┐
+│ Order    │
+│Controller│
+└────┬─────┘
+     │
+     ▼
+┌──────────┐
+│ OrderSvc │
+└────┬─────┘
+     ├────→ PaymentAPI (external)
+     │
+     ▼
+┌──────────┐
+│ OrderRepo│
+└────┬─────┘
+     │
+     ▼
+  PostgreSQL
+```
+
+**Constraints**: read-only, uses existing reports + targeted file reads, no re-analysis, under 60 lines.
+
+---
+
 ### How sub-agents are invoked
 
 code-architect dispatches sub-agents via the `task` tool. Each sub-agent works autonomously with its own skill context. The results are collected and synthesised by code-architect.
@@ -268,27 +319,40 @@ code-architect
 
 ## Pipeline
 
-code-architect runs a standard pipeline for code review and refactoring tasks. Each phase has a specific purpose and most have user gates.
+code-architect runs a standard pipeline for code review and refactoring tasks. Each phase has a specific purpose and most have user gates. Based on project size, a **Quick Mode** variant may be offered during Phase 0 — same structure, fewer sub-agents.
 
 ```
-Phase 0     Project Assessment ─── "what language/framework/context?"
+Phase 0     Project Assessment ─── Q1-Q3 → Size Scan → Q4 → Mode Recommendation
+              • Quick Mode offered if project is small
+              • Full pipeline selected for larger or complex projects
    │
 Phase 1     Project Exploration ─── scouts explore structure + code
+              • Full: scout-alpha + scout-beta in parallel
+              • Quick: one scout (selected automatically)
    │
 Phase 2     Architecture Analysis ─── arch agents analyse deps + data flow
+              • Full: arch-alpha + arch-beta in parallel
+              • Quick: one arch (selected automatically)
    │              ┌────────────────────────────┐
 Phase 3     Test  │  user gate: review plan     │
             │     │  "Shall I proceed?"         │
             │     └────────────────────────────┘
+              • Full: dispatched to test-worker
+              • Quick: tests run directly via glob + test command
    │
 Phase 3.5   Post-Test Review ─── "Ready for the refactoring plan?"
    │              ┌────────────────────────────┐
 Phase 4     Plan  │  user gate: approve plan    │
             │     │  "Shall I execute?"         │
             │     └────────────────────────────┘
+              • Full: comprehensive plan
+              • Quick: compact plan (3-5 items)
    │
 Phase 5     Execute refactoring ─── step by step, test after each
+              • Same for both modes
 ```
+
+The pipeline also supports **resume**: if a session is interrupted, code-architect detects the saved state on next startup and asks whether to resume from where it left off. See [Pipeline State & Resume](#pipeline-state--resume).
 
 ### Intent Dispatch (always runs first)
 
@@ -300,6 +364,35 @@ Phase 5     Execute refactoring ─── step by step, test after each
 | 4A | "full analysis", "scan project", "explore project" | Enter Full Analysis Mode |
 | 4B | "review", "audit", "refactor", "optimise" | Enter Phase 0 pipeline |
 | 5 | Ambiguous | Ask user what they need |
+
+---
+
+## Quick Mode
+
+A lighter variant of the full pipeline for small to medium projects. Triggered by code-architect during Phase 0 after a quick project size scan.
+
+### How it differs
+
+| | Full Pipeline | Quick Mode |
+|---|---|---|
+| Phase 1 | Two scouts (alpha + beta) | One scout — automatically selected |
+| Phase 2 | Two arch agents (alpha + beta) | One arch — automatically selected |
+| Phase 3 | Test plan → test-worker → results | Test plan → run tests directly (no dedicated agent) |
+| Phase 4 | Comprehensive refactoring plan | Compact plan (3-5 items) |
+| Reports | Full detail | Summary output |
+
+### When it's offered
+
+code-architect runs `project-summary` during Phase 0 to get file count, line count, and test ratio. Based on all available information, it judges whether the project suits a lighter process. The user always gets a choice:
+
+```
+Phase 0 size scan → "This project seems small. Would you like to use Quick Mode?"
+                     [Yes, use Quick Mode / No, use full pipeline]
+```
+
+### Phase 5 — same as full
+
+Refactoring execution and per-step testing are identical to the full pipeline. Quick Mode only reduces the analysis and planning phases.
 
 ---
 
@@ -393,6 +486,58 @@ FA5: Recommend next steps ─── suggest skills based on findings
 
 ---
 
+## Project Deconstruction
+
+An optional skill that reads existing analysis reports and key source files to produce a narrative breakdown of how a project runs. It does not re-analyse — it synthesises what's already been gathered into a readable "whole picture."
+
+**Triggered by**: code-architect asks "Would you like to load project-deconstruction for a detailed narrative of how this project runs?" at Phase 4 (refactoring plan) or FA4 (analysis report).
+
+**Output**: 3-6 narrative paragraphs covering startup sequence, data flow, module dependencies, side effects, and critical paths, followed by one ASCII box diagram.
+
+See the [project-deconstruction](#project-deconstruction) skill entry for details.
+
+---
+
+## Pipeline State & Resume
+
+The pipeline automatically saves progress to `.opencode/state/pipeline-state.json` at every major phase boundary. If the session is interrupted (closed terminal, timeout, crash), the next session can resume from where it left off.
+
+### Save points
+
+| When | What's saved |
+|------|-------------|
+| After Mode Recommendation | Phase 0 answers, size scan data, selected mode |
+| After Phase 1 completes | Scout report completed |
+| After Phase 2 completes | Architecture report completed |
+| After Phase 3 completes | Test results completed |
+| After Phase 4 plan approved | Refactoring plan + step count |
+| After each Phase 5 step | Current step number |
+| After Full Analysis (FA4) | Report completed flag |
+
+### Resume flow
+
+On next startup, code-architect detects the state file automatically and asks:
+
+```
+"I found an interrupted pipeline at Phase X. Do you want to resume it?"
+[Yes, resume / No, start fresh]
+```
+
+If the user resumes:
+- Phase 0 answers are restored — no need to re-ask
+- Completed phases are skipped
+- Phase 5 continues from the last completed step
+
+If the user declines, the state file is deleted and a fresh pipeline begins.
+
+### Edge cases
+
+- **Project path changed**: detected and handled with a user prompt
+- **Corrupted state file**: auto-deleted, user informed
+- **User wants unrelated work**: resume prompt comes before intent dispatch — declining resumes normal operation
+
+---
+
 ## Usage Scenarios
 
 ### Scenario 1: New project, first look
@@ -467,6 +612,51 @@ you: I'm not sure how to implement the search feature, any ideas?
 → writing-plans produces a task plan
 ```
 
+### Scenario 6: Quick Mode for a small project
+
+```
+you: review the code quality of this small utility library
+→ code-architect enters Phase 0: Q1 (Python) → Q2 (Library) → Q3 (None)
+→ runs project-summary: 12 files, 800 lines
+→ Q4 additional context → you say no
+→ "This project seems small. Would you like to use Quick Mode?"
+→ you: Yes
+→ Phase 1: one scout (selected automatically), Phase 2: one arch
+→ Phase 3: test plan → approved → tests run directly
+→ Phase 4 offers project-deconstruction → you: show me
+→ narrative breakdown + ASCII diagram produced alongside compact plan
+→ Phase 5: execute, test after each step
+```
+
+### Scenario 7: Resume after interruption
+
+```
+Session 1:
+you: refactor the module structure
+→ Phase 0-2 complete, Phase 3 in progress → terminal closes
+
+Session 2 (next day):
+you: (first message)
+→ code-architect: "I found an interrupted pipeline at Phase 3.
+  Do you want to resume it?" [Yes, resume / No, start fresh]
+→ you: Yes
+→ Phase 0 answers restored, Phase 1-2 marked done
+→ continues from Phase 3 without re-asking anything
+```
+
+---
+
+## Translations
+
+This README is also available in other languages:
+
+| Language | File |
+|----------|------|
+| Español | [README.es.md](i18n/README.es.md) |
+| Français | [README.fr.md](i18n/README.fr.md) |
+| 日本語 | [README.ja.md](i18n/README.ja.md) |
+| Русский | [README.ru.md](i18n/README.ru.md) |
+
 ---
 
 ## Design Principles
@@ -479,5 +669,8 @@ you: I'm not sure how to implement the search feature, any ideas?
 - **Dual log format** — progress-tracker maintains both a narrative log (PROGRESS.md) and a structured data file (SESSION_DATA.md) for decisions, lists, and pending items.
 - **Safe rollback** — all version control operations use `git revert` (preserves history). Never `git reset --hard`.
 - **Stdlib only** — Python scripts have no external dependencies. Zero pip installs.
+- **Technical objectivity** — evaluate code purely on technical merit. Ignore popularity, brand, hype, contributor count, or project age. Same standard for every project.
+- **Design & long-term lens** — every report covers three layers: design (abstraction, patterns, complexity), architecture (module boundaries, feature change scope, extension points), and long-term (growth impact, debt cost, timing). Surface findings are the starting point, not the conclusion.
+- **Auto-resume** — the pipeline saves progress after every phase. If interrupted, it auto-detects the saved state and offers to resume.
 
 ---

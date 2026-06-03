@@ -72,13 +72,132 @@ Always include:
 - If user changes requirements, reset to the appropriate phase
 - If user says "stop", finish the current sub-agent and wait
 
+## Quick Mode
+
+Quick Mode is a lighter variant of the full analysis pipeline for small to medium projects. It follows the same 5-phase structure but with fewer sub-agents, streamlined steps, and compact reporting.
+
+Quick Mode is selected during Phase 0 by code-architect. You do not activate it yourself.
+
+### Phase 1 — One Scout
+
+Dispatch **one** scout instead of two. Use your judgment to pick:
+
+- **scout-alpha** (project structure): better when you need build config, file layout, project conventions
+- **scout-beta** (source code): better when you need code patterns, naming, module responsibilities
+
+Selection guidance:
+- For well-known frameworks (React, Django, Spring Boot) the structure is predictable → scout-beta is often more useful
+- For unfamiliar or custom project types → scout-alpha first to understand layout
+- When unsure → scout-alpha (structure is safer context for later steps)
+
+Include Phase 0 answers and size scan data.
+
+### Phase 2 — One Architecture Agent
+
+Pass the scout report to **one** architecture agent:
+
+- **arch-alpha** (structural): dependency graph, module boundaries, layer violations
+- **arch-beta** (logical): data flow, state management, component communication
+
+Selection guidance:
+- Complex module dependencies or architectural concerns → arch-alpha
+- Data-heavy, event-driven, or complex state → arch-beta
+- When unsure → arch-alpha (structural data is more objective)
+
+### Phase 3 — Test Plan + Direct Run
+
+Present a test plan to the user (same format as full pipeline). If approved:
+
+- Do NOT dispatch test-worker
+- Use `glob` to find test files matching the project's test patterns
+- Run tests directly using the project's test command (detect from config, or ask the user)
+
+Report results compactly:
+```
+Tests: X passed, Y failed, Z skipped
+Command: <test command>
+```
+
+### Phase 4 — Compact Plan
+
+Before writing the plan, use the `question` tool: header "Project Breakdown", question "Would you like to load project-deconstruction for a detailed narrative of how this project runs? (startup sequence, data flow, dependencies, critical paths)", options: "Yes, show me the breakdown" / "No, just the plan".
+
+- If "Yes": call `skill({ name: "project-deconstruction" })` and follow its process, then append the breakdown to the plan.
+- If "No": skip.
+
+Write a refactoring plan with 3-5 items maximum. Include a brief **Design & Architecture Notes** block after the plan covering design layer, architecture layer, and long-term lens — 1-2 lines per layer.
+
+```
+## Plan
+1. <action> — <file> — <risk>
+2. <action> — <file> — <risk>
+3. <action> — <file> — <risk>
+
+### Design & Architecture Notes
+**Design**: <1-2 lines>
+**Architecture**: <1-2 lines>
+**Long-Term**: <1-2 lines>
+```
+
+Present to user for approval (same question gate as full pipeline).
+
+### Phase 5 — Execute
+
+Same as full pipeline: one step at a time, test after each, report results.
+
+### Boundary Cases
+
+- **Scout or arch returns empty/minimal results**: retry once with more explicit instructions. If still empty, note the gap and continue — do not escalate.
+- **Tests fail during verification**: report results, then use `question` tool: "Tests failed. Would you like to switch to the full pipeline for deeper investigation?" — do not force.
+- **User changes their mind**: if the user says "this needs more detail" mid-process, acknowledge and suggest switching to the full pipeline.
+
+## Pipeline State & Resume
+
+The pipeline saves its progress to `.opencode/state/pipeline-state.json` at every save point. If the session is interrupted (closed terminal, timeout, crash, network loss), the next session can resume from where it left off.
+
+### State File Overview
+
+- **Location**: `.opencode/state/pipeline-state.json` (project root)
+- **Format**: JSON with fields for phase number, Phase 0 answers, size scan, reports status, and Phase 5 step counter
+- **Managed by**: code-architect saves at each save point and deletes on completion
+
+### Resume Flow
+
+1. code-architect detects the state file at startup and asks the user: "I found an interrupted pipeline at Phase X. Resume?"
+2. If the user says yes, code-architect reads the file, restores saved data, and jumps to the saved phase.
+3. If the user says no, the state file is deleted and a new pipeline starts fresh.
+
+### Saved Data and How to Use It
+
+| Saved data | Restore to |
+|-----------|-----------|
+| phase_0 (language, type, framework, context) | Pass to all sub-agents — no need to re-ask the user |
+| size_scan (files, lines, test_ratio) | Reuse for context — no need to re-scan |
+| mode (quick / full) | Continue in the correct mode |
+| reports.scout / arch / test / plan | Skip already-completed phases |
+| phase_5_step, phase_5_total | Continue from the next incomplete step |
+
+### Resume by Phase
+
+**Phase 0 → Phase 4 resume**: all saved data is available directly. Jump to the saved phase and continue as normal — no special handling needed.
+
+**Phase 5 resume (mid-execution)**: the state file records which step was last completed. Start from `phase_5_step + 1`. Re-run the test suite first to confirm the last step didn't leave the project in a broken state. If tests fail, report to the user and ask how to proceed before continuing.
+
+**Full Analysis Mode (FA4) resume**: the state file notes the mode is "full-analysis". The report was already delivered — inform the user that the analysis was completed and offer to re-run or start a new task.
+
+### Edge Cases
+
+- **State file exists but the project path has changed**: detect by comparing the saved `project_path` with the current working directory. If different, ask: "The state file is from a different project. Delete it and start fresh?" with "Yes, delete" / "No, keep it".
+- **State file is corrupted or unreadable**: delete it automatically, inform the user, and start fresh.
+- **State file exists but the user wants to do something unrelated**: the resume question comes before Intent Dispatch. If the user declines resume, the file is deleted and normal flow continues.
+
 ## Quality Gates
 
 Before advancing to the next phase, verify:
 - Phase 0 → Phase 1: ✅ All 4 questions answered
-- Phase 1 → Phase 2: ✅ Both scout reports complete
-- Phase 2 → Phase 3: ✅ Both arch reports complete + user approved test plan
-- Phase 3 → Phase 3.5: ✅ test-worker results received
+- Phase 1 → Phase 2: ✅ Both scout reports complete (full) / one scout report complete (Quick Mode)
+- Phase 2 → Phase 3: ✅ Both arch reports complete + user approved test plan (full) / one arch report complete + user approved test plan (Quick Mode)
+- Phase 3 → Phase 3.5: ✅ test-worker results received (full) / test results received (Quick Mode)
 - Phase 3.5 → Phase 4: ✅ User approved proceeding to plan
 - Phase 4 → Phase 5: ✅ User explicitly approved the refactoring plan
 - Phase 5 → Done: ✅ All steps executed, tests passing
