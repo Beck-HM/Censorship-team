@@ -30,6 +30,7 @@ A structured opencode skills package for code analysis, refactoring, and project
 - [General-Purpose Skills](#general-purpose-skills)
 - [Custom Tools](#custom-tools)
 - [Full Analysis Mode](#full-analysis-mode)
+- [Deep Review Sub-agents](#deep-review-sub-agents)
 - [Project Deconstruction](#project-deconstruction)
 - [Pipeline State & Resume](#pipeline-state--resume)
 - [Usage Scenarios](#usage-scenarios)
@@ -117,6 +118,16 @@ you: track my progress today
 → every change from now on is auto-logged + committed
 ```
 
+### Deep review committee
+
+```
+you: deep review this project
+→ code-architect runs FA1-FA3 scouts/architecture/tests
+→ at FA4: "Run deep review committee?" → you say yes
+→ dispatches 8 sub-agents across Architecture / Specialists / Verification teams
+→ outputs scored report with evidence chain and future risk prediction
+```
+
 ### Full pipeline (review + refactor)
 
 ```
@@ -139,7 +150,7 @@ User message
 │ Level 1: Casual / chit-chat            │ → short reply, do nothing
 │ Level 2: Simple code op (rename, etc.) │ → do it directly
 │ Level 3: Specific skill need           │ → ask: "load <skill>?"
-│ Level 4: Analysis / refactor           │ → full analysis, Quick Mode, or Phase 0-5
+│ Level 4: Analysis / refactor           │ → full analysis (+ optional deep review committee), Quick Mode, or Phase 0-5
 │ Level 5: Cannot determine              │ → ask: "what do you need?"
 └────────────────────────────────────────┘
 ```
@@ -150,7 +161,7 @@ User message
 
 ## Agents
 
-10 agents in total. The first 9 form a pipeline; the 10th is the installer.
+10 pipeline agents + 8 deep review sub-agents.
 
 ### Primary
 
@@ -159,87 +170,9 @@ The only agent that talks to the user directly. Routes every message through a 5
 
 - **File**: `agents/code-architect.md`
 - **Mode**: primary
-- **Access**: read, glob, grep, edit, bash, task, question; skills: pipeline-orchestration, code-review, debugging, brainstorming, writing-plans, progress-tracker, project-deconstruction
+- **Invoked**: manually by the user only
 
 ---
-
-### Exploration (Phase 1)
-
-#### `scout-alpha`
-Maps the project's physical structure. Walks the directory tree, identifies build configuration files, detects the module layout, and catalogues entry points. Produces a structural map that downstream agents use to understand where code lives.
-
-- **File**: `agents/scout-alpha.md`
-- **Color**: `#10b981`
-- **Output**: directory tree, config files, build targets, file-type breakdown
-- **Invoked by**: code-architect Phase 1 (runs in parallel with scout-beta)
-
-#### `scout-beta`
-Explores source code organisation and conventions. Identifies naming patterns, file header conventions, import/export style, test placement conventions, and code idioms used throughout the project. Produces a stylistic profile that helps refactoring agents match the project's existing patterns.
-
-- **File**: `agents/scout-beta.md`
-- **Color**: `#34d399`
-- **Output**: naming conventions, import patterns, code style observations, test layout
-- **Invoked by**: code-architect Phase 1 (runs in parallel with scout-alpha)
-
----
-
-### Analysis (Phase 2)
-
-#### `arch-alpha`
-Structural architecture analysis. Builds a dependency graph between modules, identifies layer boundaries, detects circular dependencies, and flags architectural violations (e.g., low-level modules importing high-level ones). Produces a module dependency map and coupling analysis.
-
-- **File**: `agents/arch-alpha.md`
-- **Color**: `#f59e0b`
-- **Output**: dependency graph, coupling metrics, layer violations, circular dependency report
-- **Invoked by**: code-architect Phase 2 (runs in parallel with arch-beta)
-
-#### `arch-beta`
-Logical and data-flow analysis. Traces how data moves through the system, identifies state management approaches, maps critical execution paths, and highlights areas where data ownership is unclear or shared mutable state creates risk. Produces a data flow map and critical path analysis.
-
-- **File**: `agents/arch-beta.md`
-- **Color**: `#f97316`
-- **Output**: data flow diagram, state ownership map, critical paths, concurrency risks
-- **Invoked by**: code-architect Phase 2 (runs in parallel with arch-alpha)
-
----
-
-### Testing (Phase 3)
-
-#### `test-worker`
-Writes and runs tests. Given the architecture reports, produces a detailed test plan covering unit tests, integration tests, edge cases, and error cases for each module. After user approval, writes the test files using the project's existing test framework and conventions, runs them, and reports results.
-
-- **File**: `agents/test-worker.md`
-- **Color**: `#ec4899`
-- **Output**: test plan document, new test files, test run results
-- **Invoked by**: code-architect Phase 3 (after user gate approval)
-
----
-
-### Refactoring (Phase 5)
-
-#### `refactor-conservative`
-Makes minimal, safe changes one step at a time. Preserves existing behaviour, public API, and code structure. Suitable for targeted fixes, small extractions, and renaming. Each change is followed by running the test suite. If a step breaks tests, it rolls back and reports.
-
-- **File**: `agents/refactor-conservative.md`
-- **Color**: `#3b82f6`
-- **Scope**: single-function or single-module changes, renames, extractions
-- **Invoked by**: code-architect Phase 5 (as individual refactoring steps)
-
-#### `refactor-aggressive`
-Performs large-scale renovation. Eliminates anti-patterns, splits monolithic modules, modernises legacy code, and restructures cross-cutting concerns. Operates across multiple files and modules. Each step is still tested, but the risk tolerance is higher — the agent expects test failures and fixes them before moving on.
-
-- **File**: `agents/refactor-aggressive.md`
-- **Color**: `#ef4444`
-- **Scope**: multi-module changes, architectural restructuring, tech debt elimination
-- **Invoked by**: code-architect Phase 5 (as individual refactoring steps)
-
-#### `refactor-pattern`
-Applies design patterns to improve structure. Identifies where a pattern (Strategy, Factory, Observer, Adapter, etc.) solves a concrete code smell and implements it. Unlike aggressive refactoring, this agent follows a specific pattern recipe rather than free-form restructuring.
-
-- **File**: `agents/refactor-pattern.md`
-- **Color**: `#8b5cf6`
-- **Scope**: pattern introduction or migration (Strategy → enum dispatch, Observer → event bus, etc.)
-- **Invoked by**: code-architect Phase 5 (as individual refactoring steps)
 
 ---
 
@@ -252,6 +185,26 @@ Sets up the package's model configuration. Guides the user through assigning mod
 - **Color**: `#f59e0b`
 - **Mode**: primary
 - **Invoked**: manually by the user only
+
+---
+
+### Deep Review Sub-agents
+
+8 sub-agents organized into three teams. Dispatched by code-architect when "Run deep review committee" is selected during FA4 or Phase 4.
+
+**Architecture Team**:
+- `deep-architect` — Evaluates why the architecture works: module boundaries, extension points, patterns, design decisions
+- `deep-critic` — Evaluates why the architecture could fail: over-engineering, complexity hazards, lifecycle risks, hidden coupling
+
+**Specialists Team**:
+- `deep-security` — Scans for eval/runInThisContext/child_process/dynamic imports, outputs Critical/High/Medium/Low
+- `deep-performance` — Analyzes O(n²) algorithms, full scans, cache misses, repeated traversal, watch mode efficiency
+- `deep-techdebt` — Analyzes coupling degree, boundary pollution, evolution cost (files touched per feature), dead code
+- `deep-redteam` — Attack surface analysis: "if I were trying to break this project, where would I attack?"
+
+**Verification Team**:
+- `deep-evidence` — Attaches exact file:line evidence to every finding, marks unsupported findings
+- `deep-confidence` — Assigns High (code evidence) / Medium (inference) / Low (speculative) to every finding, no default High
 
 ---
 
@@ -312,7 +265,11 @@ code-architect
   ├── Phase 1: task scout-alpha + task scout-beta (parallel)
   ├── Phase 2: task arch-alpha + task arch-beta (parallel)
   ├── Phase 3: task test-worker
-  └── Phase 5: task refactor-* (sequential, one per step)
+  ├── Phase 5: task refactor-* (sequential, one per step)
+  └── Deep Review (FA4 or Phase 4 optional):
+      ├── Round 1: deep-architect + deep-critic (parallel)
+      ├── Round 2: deep-security + deep-performance + deep-techdebt + deep-redteam (parallel)
+      └── Round 3: deep-evidence + deep-confidence (parallel)
 ```
 
 ---
@@ -361,7 +318,7 @@ The pipeline also supports **resume**: if a session is interrupted, code-archite
 | 1 | Greetings, casual chat | Short reply, no action |
 | 2 | "rename X", "change Y", "add comment" | Execute directly |
 | 3 | "bug", "explore", "plan", "track" | Ask to load relevant skill |
-| 4A | "full analysis", "scan project", "explore project" | Enter Full Analysis Mode |
+| 4A | "full analysis", "scan project", "explore project", "deep review", "committee" | Enter Full Analysis Mode |
 | 4B | "review", "audit", "refactor", "optimise" | Enter Phase 0 pipeline |
 | 5 | Ambiguous | Ask user what they need |
 
@@ -378,7 +335,7 @@ A lighter variant of the full pipeline for small to medium projects. Triggered b
 | Phase 1 | Two scouts (alpha + beta) | One scout — automatically selected |
 | Phase 2 | Two arch agents (alpha + beta) | One arch — automatically selected |
 | Phase 3 | Test plan → test-worker → results | Test plan → run tests directly (no dedicated agent) |
-| Phase 4 | Comprehensive refactoring plan | Compact plan (3-5 items) |
+| Phase 4 | Comprehensive plan + optional 8-agent deep review | Compact plan (3-5 items) + optional 4-agent quick deep review |
 | Reports | Full detail | Summary output |
 
 ### When it's offered
@@ -442,8 +399,6 @@ Located in `skills/tools/`. These are loaded on demand — code-architect asks t
 4. Auto-commit every file change to git at task level
 5. Rollback support via `git revert` (user-triggered, shows commit list)
 
----
-
 ## Custom Tools
 
 6 TypeScript wrappers in `tools/` that call Python scripts in `scripts/`. They are **optional** helpers — the pipeline works without them.
@@ -471,8 +426,10 @@ FA0: Ask one question ─── "Any specific focus?" (or "cover everything")
 FA1: Scout-alpha + scout-beta (parallel project exploration)
 FA2: Arch-alpha + arch-beta (parallel architecture analysis)
 FA3: Test coverage check ─── run existing tests, note gaps
-FA4: Produce comprehensive report ─── overview, structure, architecture,
-     data flow, test coverage, risk assessment
+FA4: Report production ─── offers options:
+     • Deep review committee (+ project-deconstruction optional)
+     • Project-deconstruction only
+     • Standard report
 FA5: Recommend next steps ─── suggest skills based on findings
 ```
 
@@ -482,7 +439,9 @@ FA5: Recommend next steps ─── suggest skills based on findings
 - No refactoring plan
 - No code modification — read-only
 
-**Expected token cost**: ~25K tokens (vs ~50K for the full pipeline).
+**Deep Review Committee**: An optional 8-agent parallel review available at FA4. See [Deep Review Sub-agents](#deep-review-sub-agents) for team composition.
+
+**Expected token cost**: ~50K tokens (FA standard) or ~100K tokens (with deep review committee).
 
 ---
 
@@ -490,7 +449,7 @@ FA5: Recommend next steps ─── suggest skills based on findings
 
 An optional skill that reads existing analysis reports and key source files to produce a narrative breakdown of how a project runs. It does not re-analyse — it synthesises what's already been gathered into a readable "whole picture."
 
-**Triggered by**: code-architect asks "Would you like to load project-deconstruction for a detailed narrative of how this project runs?" at Phase 4 (refactoring plan) or FA4 (analysis report).
+**Triggered by**: code-architect asks "Would you like to add extra analysis before the final report?" at Phase 4 (refactoring plan) or FA4 (analysis report). Select "Show project-deconstruction" from the options, or select "Run deep review committee" and answer "Yes, both" to include project-deconstruction alongside the committee review.
 
 **Output**: 3-6 narrative paragraphs covering startup sequence, data flow, module dependencies, side effects, and critical paths, followed by one ASCII box diagram.
 
@@ -623,10 +582,33 @@ you: review the code quality of this small utility library
 → you: Yes
 → Phase 1: one scout (selected automatically), Phase 2: one arch
 → Phase 3: test plan → approved → tests run directly
-→ Phase 4 offers project-deconstruction → you: show me
-→ narrative breakdown + ASCII diagram produced alongside compact plan
+→ Phase 4: "Run quick deep review?" → you: Yes
+→ Round 1: deep-architect + deep-critic (architecture analysis)
+→ Round 2: deep-security + deep-techdebt (security + tech debt scan)
+→ compact plan + saved to deep-review-report.md
 → Phase 5: execute, test after each step
 ```
+
+### Scenario 8: Deep review committee
+
+```
+you: full analysis with deep review
+→ code-architect: "Do you want to run Full Analysis Mode?" → you: Yes
+→ code-architect: "Any specific focus?" → you: cover everything
+→ runs FA1-FA3 (scouts → architecture → tests)
+→ FA4: "Would you like to add extra analysis before the final report?"
+  [Run deep review committee / Show project-deconstruction / Just the standard report]
+→ you: Run deep review committee
+→ code-architect: "Also add project-deconstruction?" → you: Yes, both
+→ Round 1: deep-architect + deep-critic — why design works / why it fails
+→ Round 2: deep-security + deep-performance + deep-techdebt + deep-redteam
+→ Round 3: deep-evidence + deep-confidence — exact file:line + confidence ratings
+→ project-deconstruction runs in parallel
+→ Final report includes: 7 standard sections + 8. Deep Review Committee Report
+  with scores (X/10), evidence chain, future risk prediction
+```
+
+**Token cost**: ~100K tokens for a 50K-line project (scouts + archs + deep review + full report).
 
 ### Scenario 7: Resume after interruption
 
@@ -654,7 +636,7 @@ This README is also available in other languages:
 |----------|------|
 | Español | [README.es.md](i18n/README.es.md) |
 | Français | [README.fr.md](i18n/README.fr.md) |
-| 日本語 | [README.ja.md](i18n/README.ja.md) |
+| Japanese | [README.ja.md](i18n/README.ja.md) |
 | Русский | [README.ru.md](i18n/README.ru.md) |
 
 ---
@@ -672,5 +654,6 @@ This README is also available in other languages:
 - **Technical objectivity** — evaluate code purely on technical merit. Ignore popularity, brand, hype, contributor count, or project age. Same standard for every project.
 - **Design & long-term lens** — every report covers three layers: design (abstraction, patterns, complexity), architecture (module boundaries, feature change scope, extension points), and long-term (growth impact, debt cost, timing). Surface findings are the starting point, not the conclusion.
 - **Auto-resume** — the pipeline saves progress after every phase. If interrupted, it auto-detects the saved state and offers to resume.
+- **Multi-agent deep review** — FA4 and Phase 4 offer an optional 8-agent committee (Architecture, Security, Performance, Tech Debt, Red Team, Evidence, Confidence) that runs in three parallel rounds. Each agent produces structured findings cited to exact file:line locations with confidence ratings.
 
 ---
