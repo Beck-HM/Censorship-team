@@ -142,9 +142,10 @@ Use the `question` tool: header "Skill Suggestion", question "It sounds like you
 If the user wants project-level work, split by signal:
 
 **Mode A — Full Analysis (read-only scan)**
-Signal keywords: full analysis / analyze the project / scan project / project overview / comprehensive scan / explore project / get to know
-→ Use the `question` tool: header "Full Analysis", question "Do you want to run Full Analysis Mode? This will scan the project structure, architecture, data flow, and test coverage, then produce a comprehensive read-only report. No files will be modified.", options: "Yes, run full analysis" / "No, let me specify".
+Signal keywords: full analysis / analyze the project / scan project / project overview / comprehensive scan / explore project / get to know / deep review / committee / 委员会 / 评审
+→ Use the `question` tool: header "Full Analysis", question "Do you want to run Full Analysis Mode? This will scan the project structure, architecture, data flow, and test coverage, then produce a comprehensive read-only report. No files will be modified.", options: "Yes, run full analysis" / "Run full analysis with deep review committee" / "No, let me specify".
 - If "Yes, run full analysis": enter **Full Analysis Mode** (see section below).
+- If "Run full analysis with deep review committee": enter Full Analysis Mode. At FA4, skip the pre-report question — automatically run deep review + project-deconstruction and embed both in the report.
 - If "No, let me specify": ask what they want and route accordingly.
 
 **Mode B — Review / Refactor (with modification)**
@@ -192,10 +193,36 @@ Wait for both to complete.
 
 ### FA4 — Comprehensive Report
 
-Before building the report, use the `question` tool: header "Project Breakdown", question "Would you like to load project-deconstruction for a detailed narrative of how this project runs? (startup sequence, data flow, dependencies, critical paths)", options: "Yes, show me the breakdown" / "No, standard report".
+Before building the report, check for a previous deep review:
+  1. Run `Test-Path -LiteralPath "deep-review-report.md"`.
+  2. If found, use the `question` tool: header "Previous Deep Review", question "Found a saved deep review report. Load it and skip re-run?", options: "Load previous" / "Run new review" / "Skip".
+     - If "Load previous": Read `deep-review-report.md`, embed its content in section 8 below. Skip the dispatch steps.
+     - If "Run new review": proceed to the question below.
+     - If "Skip": proceed without deep review. Skip to building the report.
+  3. If not found, proceed to the question below.
 
-- If "Yes": call `skill({ name: "project-deconstruction" })` and follow its process. Append the breakdown to the report below.
-- If "No": skip.
+Use the `question` tool: header "Pre-Report Analysis", question "Would you like to add extra analysis before the final report?", options: "Run deep review committee (architecture + security + performance + tech debt)" / "Show project-deconstruction (runtime narrative only)" / "No, just the standard report".
+
+If "Run deep review committee":
+  1. Use the `question` tool: header "Project Deconstruction", question "Also add project-deconstruction for a runtime narrative?", options: "Yes, both" / "No, deep review only".
+     - If "Yes, both": call `skill({ name: "project-deconstruction" })` and follow its process. Append to report.
+     - If "No": skip.
+  2. Dispatch deep-architect and deep-critic in parallel using `task`. Wait for both.
+  3. Dispatch deep-security, deep-performance, deep-techdebt, deep-redteam in parallel using `task`. Wait for all.
+  4. Dispatch deep-evidence and deep-confidence in parallel using `task`. Wait for both.
+  5. Continue to build the report below — embed deep review findings as section 8.
+  6. After the report is output to the user:
+     - Run `Test-Path -LiteralPath "deep-review-report.md"`.
+     - If the file exists: use the `question` tool: header "Overwrite Report", question "deep-review-report.md already exists. Overwrite?", options: "Overwrite" / "Skip". Only write if "Overwrite".
+     - If the file does not exist: write it directly.
+     - Use `write` to save the report to `deep-review-report.md`.
+     - Then output: "Deep review report saved to deep-review-report.md".
+
+If "Show project-deconstruction (runtime narrative only)":
+  - Call `skill({ name: "project-deconstruction" })` and follow its process. Append to report below.
+
+If "No, just the standard report":
+  - Skip extra analysis. Continue to build the report below.
 
 Synthesize everything into a single report. Present it to the user directly (do not use `question` tool):
 
@@ -234,6 +261,33 @@ Synthesize everything into a single report. Present it to the user directly (do 
 **Architecture Layer**: How many files does a typical feature change touch? Are module boundaries well-drawn or arbitrary? Where would a new feature fit? Are there cross-layer violations?
 
 **Long-Term Lens**: Which parts will break first as the codebase grows? Which decisions were intentional shortcuts (with a plan to repay) vs. accidental debt? Which refactors get exponentially more expensive if delayed?
+
+### 8. Deep Review Committee Report
+*(Only present if deep review was requested)*
+
+**Architecture Score**: X.X/10 (Confidence: High/Medium/Low)
+<deep-architect + deep-critic synthesis>
+
+**Security Score**: X.X/10 (Confidence: ...)
+<deep-security synthesis>
+
+**Performance Score**: X.X/10 (Confidence: ...)
+<deep-performance synthesis>
+
+**Technical Debt Score**: X.X/10 (Confidence: ...)
+<deep-techdebt synthesis>
+
+**Scalability Score**: X.X/10 (Confidence: ...)
+<synthesis from all teams>
+
+**Evidence Chain**:
+<deep-evidence output — file:line per finding>
+
+**Future Risk Prediction**:
+<synthesis — what breaks at 100x scale>
+
+**Committee Verdict**:
+<one-paragraph final judgement>
 ````
 
 **Save Point**: update `pipeline-state.json` — set phase to "FA4", mode to "full-analysis". The state file is kept so the user can revisit the report.
@@ -435,8 +489,29 @@ You may add a brief explanation: "Quick Mode uses one scout instead of two, one 
    - **Risk Assessment**: for each step, note the risk level and rollback strategy
    - **Dependencies**: which steps depend on which
    - **Design & Architecture Notes**: brief assessment covering design choices, architecture boundaries, and long-term impact — 2-3 lines per layer
-3. Before presenting the plan, use the `question` tool: header "Project Breakdown", question "Would you like to load project-deconstruction for a detailed narrative of how this project runs? (startup sequence, data flow, dependencies, critical paths)", options: "Yes, show me the breakdown" / "No, just the plan".
-   - If "Yes, show me the breakdown": call `skill({ name: "project-deconstruction" })` and follow its process, then present the breakdown alongside the plan.
+3. Before presenting the plan, check for a previous deep review:
+     1. Run `Test-Path -LiteralPath "deep-review-report.md"`.
+     2. If found, use the `question` tool: header "Previous Deep Review", question "Found a saved deep review report. Load it?", options: "Load previous" / "Run new review" / "Skip".
+        - If "Load previous": Read `deep-review-report.md`, embed in plan below. Skip dispatch.
+        - If "Run new review": proceed to the question below.
+        - If "Skip": skip deep review.
+     3. If not found, proceed to the question below.
+   Use the `question` tool: header "Pre-Plan Analysis", question "Would you like to add extra analysis before the refactoring plan?", options: "Run deep review committee" / "Show project-deconstruction (runtime narrative only)" / "No, just the plan".
+   - If "Run deep review committee":
+     1. Use the `question` tool: header "Project Deconstruction", question "Also add project-deconstruction?", options: "Yes, both" / "No, deep review only".
+        - If "Yes, both": call `skill({ name: "project-deconstruction" })`.
+        - If "No": skip.
+     2. Dispatch deep-architect + deep-critic in parallel via `task`. Wait.
+     3. Dispatch deep-security + deep-performance + deep-techdebt + deep-redteam in parallel via `task`. Wait.
+     4. Dispatch deep-evidence + deep-confidence in parallel via `task`. Wait.
+     5. Embed findings in the plan below.
+     6. After the plan is presented to the user:
+        - Run `Test-Path -LiteralPath "deep-review-report.md"`.
+        - If the file exists: use the `question` tool: header "Overwrite Report", question "deep-review-report.md already exists. Overwrite?", options: "Overwrite" / "Skip". Only write if "Overwrite".
+        - If the file does not exist: write it directly.
+        - Use `write` to save the deep review findings to `deep-review-report.md`.
+        - Then output: "Deep review report saved to deep-review-report.md".
+   - If "Show project-deconstruction (runtime narrative only)": call `skill({ name: "project-deconstruction" })` and follow its process, then present the breakdown alongside the plan.
    - If "No, just the plan": skip.
 4. Present the plan (and breakdown, if generated) to the user. Then use the `question` tool: header "Refactoring Plan", question "Here is the refactoring plan. Shall I begin execution?", options: "Yes, start refactoring" / "I have more to add" / "Modify the plan".
    - If "I have more to add" or "Modify the plan", take their input, adjust, and ask again.
@@ -446,13 +521,58 @@ You may add a brief explanation: "Quick Mode uses one scout instead of two, one 
 
 ### Phase 5: Execute Refactoring (only after user approval)
 IMPORTANT: Do NOT proceed to Phase 5 until the user has explicitly approved via the question tool in Phase 4. Do NOT ask again in Phase 5.
-1. Execute refactoring steps one at a time, in order.
-2. For each step, dispatch the appropriate refactoring sub-agent (refactor-conservative, refactor-aggressive, or refactor-pattern). Include Phase 0 context so the agent knows the language and framework.
-3. After each step, run the test suite to verify nothing is broken.
-4. If a step causes test failures:
-   - If the failure is minor, dispatch the conservative agent to fix it.
-   - If the failure is major, roll back the step and report to the user.
-5. After all steps complete, run the full test suite one final time and report results.
+1. If a deep review was completed (findings embedded in the plan from Phase 4), reference its findings when selecting refactoring agents and prioritizing steps. For example, if security flagged `runInThisContext`, prioritize that fix over cosmetic improvements.
+
+2. **Ask refactoring style once (before any step):**
+   Use the `question` tool:
+   header: "Refactoring Style"
+   question: "Which refactoring approach for all steps?"
+   options: "Conservative (safe, minimal, step-by-step)" / "Aggressive (large-scale rewrites, eliminate smells)" / "Pattern (apply design patterns)" / "Auto (pick per step based on content)"
+
+3. Execute refactoring steps one at a time, in order. For each step:
+
+   a. Determine the agent type: if user selected a specific style, use that agent. If "Auto", analyze the step content and choose the best fit.
+
+   b. Dispatch the refactoring sub-agent via `task`:
+      `task({ description: "Step N: <step title>", prompt: "<step description + Phase 0 context + relevant deep review findings>", subagent_type: "refactor-conservative" })`
+      Use `refactor-aggressive` or `refactor-pattern` as determined in step a.
+
+   c. Wait for the sub-agent to complete. Do NOT edit any source files yourself — only sub-agents may modify code.
+
+   d. Run the test suite.
+
+   e. If tests pass: output "Step N completed." Proceed to the next step.
+
+   f. If tests fail: use the `question` tool:
+      header: "Step N Failed"
+      question: "Step N tests failed. What should I do?"
+      options: "Retry with conservative fix" / "Retry with aggressive fix" / "Rollback step and skip" / "Rollback step and stop"
+
+      - "Retry with conservative fix":
+        Dispatch refactor-conservative via `task`. Run tests again.
+        If pass: "Step N fixed." Proceed to next step.
+        If fail: ask again with the same question (same 4 options).
+
+      - "Retry with aggressive fix":
+        Dispatch refactor-aggressive via `task`. Run tests again.
+        If pass: "Step N fixed." Proceed to next step.
+        If fail: ask again with the same question.
+
+      - "Rollback step and skip":
+        Run `git revert` to undo the step. Log "Step N: BLOCKED". Proceed to next step.
+
+      - "Rollback step and stop":
+        Run `git revert` to undo the step. Output all results. End Phase 5 immediately.
+
+4. After all steps complete, run the full test suite one final time.
+
+   If any tests fail: loop up to 3 rounds. Each round:
+   - Analyze the failures.
+   - Use the `question` tool: header "Final Test Failures", question "Remaining failures after refactoring. Proceed with fixes?", options: "Fix remaining failures" / "Accept and finish".
+   - If "Fix": dispatch refactor-conservative via `task`. Run tests. If pass, proceed. If still fail, continue to next round.
+   - If "Accept": stop.
+
+5. Report final results: "N steps completed. M blocked. Tests: X passed, Y remaining."
 
 **Save Point after each step**: update `pipeline-state.json` — set phase to "5", increment phase_5_step.
 
@@ -468,4 +588,5 @@ IMPORTANT: Do NOT proceed to Phase 5 until the user has explicitly approved via 
 ## Important Constraints
 - Never modify files in Phase 0-3.
 - Never skip the user approval gate before Phase 5.
+- Never edit source files directly in Phase 5. Only refactoring sub-agents (refactor-conservative, refactor-aggressive, refactor-pattern) may modify source code. Your role in Phase 5 is coordination and testing only.
 - If the user asks a question that does not require the full pipeline (e.g. "explain this function"), just answer directly without running the pipeline.

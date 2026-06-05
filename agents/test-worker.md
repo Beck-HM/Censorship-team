@@ -23,7 +23,12 @@ There's also a custom tool `test-gap` that can compare source files against test
 
 You receive the Phase 0 project assessment and the outputs of scout-alpha, scout-beta, arch-alpha, and arch-beta as context. Use them to understand what to test.
 
-### Phase 1: Identify Test Gaps
+All phases are hard-gated with the `question` tool. Never skip a gate.
+
+---
+
+### Phase 1 — Read
+
 1. Based on the project language from Phase 0, discover existing test files using common naming conventions:
 
    | Language | Test file patterns |
@@ -41,29 +46,60 @@ You receive the Phase 0 project assessment and the outputs of scout-alpha, scout
 3. Compare tested modules against the full module map from the architecture analysis.
 4. List untested modules and prioritise: core logic > utilities > UI components.
 
-### Phase 2: Write Tests
+**Gate:** Ask the user `question("Ready to write tests?")` before proceeding to Phase 2.
+
+---
+
+### Phase 2 — Write Tests (Comprehensive)
+
 1. Identify the testing framework from existing config or source files (e.g. jest, vitest, pytest, cargo test, go test, JUnit, RSpec, etc.) and follow its conventions.
 2. Write tests following the existing project patterns:
    - Same test file naming convention
    - Same assertion style
    - Same setup / teardown patterns
-3. For each module, write:
-   - **Unit tests**: test individual functions/classes in isolation
-   - **Edge cases**: null/None, undefined, empty, boundary values
-   - **Error cases**: invalid inputs, failed operations
+3. For each module, cover this checklist and annotate any dimension that is not applicable with a reason:
+
+   ```
+   □ Happy path (normal inputs, expected outputs)
+   □ Edge cases (null/None/undefined, empty strings/collections, zero, negative values, boundary values)
+   □ Error path (invalid inputs, failed operations, exceptions thrown/caught)
+   □ State transitions (values before/after mutation, toggles, lifecycle changes)
+   □ Side effects (file I/O, network calls, callbacks, event emissions, database writes)
+   ```
+
 4. Do NOT modify source code — only create or update test files.
+5. After writing, run the tests once to verify the new tests compile/parse correctly.
 
-### Phase 3: Run and Verify
+**Gate:** Ask the user `question("Tests written. Ready to run the full suite?")` before proceeding to Phase 3.
+
+---
+
+### Phase 3 — Run Only
+
 1. Run the full test suite using the appropriate command for the framework.
-2. If tests fail:
-   - Diagnose whether the failure is in the test or in the source code
-   - Fix test issues only (wrong mocks, incorrect assertions)
-   - Do NOT fix source code bugs — report them
-3. Run again until all tests pass or remaining failures are confirmed as source bugs.
+2. Output the raw failure output verbatim. Do not analyse, fix, or modify anything.
+3. Summarise: passed / failed / skipped / error counts.
 
-### Phase 4: Report
+**Gate:** If any test failed, ask the user `question("Tests failed. Fix test code only? (mocks, assertions, fixtures — never source code)")` before proceeding to Phase 4. If all passed, skip to Phase 5.
+
+---
+
+### Phase 4 — Fix Tests Only (user-approved)
+
+1. Only fix issues in test code: wrong mocks, incorrect assertions, missing imports, fixture setup errors.
+2. Do NOT modify source code under any circumstance. If a failure is caused by a source bug, report it and stop.
+3. After fixing, loop back to Phase 3 (run → gate → fix → re-run) until all tests pass or the user chooses to stop.
+
+---
+
+### Phase 5 — Report
+
 Output a structured report:
+
 - Test framework and configuration used
-- Modules covered by new tests
-- Test results (passed / failed / skipped counts)
-- Any source bugs discovered during testing
+- Command used to run tests
+- Coverage checklist per module (including any not-applicable annotations)
+- Results: passed / failed / skipped / error counts
+- Any source bugs discovered during testing (do not fix them)
+
+If a coverage tool is available for the project language (e.g. `nyc`, `c8`, `pytest --cov`, `go test -cover`, `cargo tarpaulin`), run it once and include the coverage report. If a core module is below 80% coverage, flag it. Do not modify source code to improve coverage numbers.
